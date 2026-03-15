@@ -12,10 +12,10 @@ separate database concerns:
 
 ## Why split migrations?
 
-| Concern | Who owns it | Credentials needed |
-|---------|-------------|-------------------|
-| Schema, roles, grants | DBA | Superuser (`postgres`) |
-| Tables, views, indexes | Developer | App user (`app_user`) |
+| Concern                 | Who owns it | Credentials needed      |
+|-------------------------|-------------|-------------------------|
+| Schema, roles, grants   | DBA         | Superuser (`postgres`)  |
+| Tables, views, indexes  | Developer   | App user (`app_user`)   |
 
 Splitting migrations by concern provides several benefits:
 
@@ -50,12 +50,12 @@ db/
 Each migration set has its own Flyway configuration (passed via environment
 variables in `docker-compose.yml`):
 
-| Setting | Admin | Dev |
-|---------|-------|-----|
-| Connected user | `postgres` (superuser) | `app_user` |
-| Default schema | `public` | `bookstore` |
-| History table | `public.flyway_admin_history` | `bookstore.flyway_dev_history` |
-| SQL location | `db/admin/sql` | `db/dev/sql` |
+| Setting         | Admin | Dev |
+|-----------------|-------------------------------|---------------------------------|
+| Connected user  | `postgres` (superuser)        | `app_user`                      |
+| Default schema  | `public`                      | `bookstore`                     |
+| History table   | `public.flyway_admin_history` | `bookstore.flyway_dev_history`  |
+| SQL location    | `db/admin/sql`                | `db/dev/sql`                    |
 
 ---
 
@@ -68,29 +68,29 @@ variables in `docker-compose.yml`):
 
 ## Running the demo
 
+> **Order matters.** Admin migrations must run before dev migrations because
+> dev migrations connect as `app_user`, which is created by the admin
+> migrations. Running dev migrations first will fail.
+
 ### 1 – Start the database
 
 ```bash
 docker-compose up -d db
-# or
-make start
 ```
 
 ### 2 – Run admin migrations (DBA step)
 
 ```bash
 docker-compose run --rm migrate-admin
-# or
-make migrate-admin
 ```
 
 Flyway connects as `postgres` and applies:
 
-| Migration | What it does |
-|-----------|-------------|
-| `V1__create_schema.sql` | Creates the `bookstore` schema |
-| `V2__create_roles.sql` | Creates `app_user` and `reporting_user` roles |
-| `V3__grant_permissions.sql` | Grants appropriate privileges on the schema |
+| Migration                   | What it does                                  |
+|-----------------------------|-----------------------------------------------|
+| `V1__create_schema.sql`     | Creates the `bookstore` schema                |
+| `V2__create_roles.sql`      | Creates `app_user` and `reporting_user` roles |
+| `V3__grant_permissions.sql` | Grants appropriate privileges on the schema   |
 
 The migration history is stored in `public.flyway_admin_history`.
 
@@ -98,29 +98,19 @@ The migration history is stored in `public.flyway_admin_history`.
 
 ```bash
 docker-compose run --rm migrate-dev
-# or
-make migrate-dev
 ```
 
 Flyway connects as `app_user` (created in step 2) and applies:
 
-| Migration | What it does |
-|-----------|-------------|
-| `V1__create_authors_table.sql` | `bookstore.authors` table |
-| `V2__create_books_table.sql` | `bookstore.books` table |
-| `V3__create_book_authors_table.sql` | `bookstore.book_authors` join table |
-| `V4__create_views.sql` | `bookstore.book_listing` view |
-| `V5__create_indexes.sql` | Indexes on title, ISBN, author last name |
+| Migration                           | What it does                              |
+|-------------------------------------|-------------------------------------------|
+| `V1__create_authors_table.sql`      | `bookstore.authors` table                 |
+| `V2__create_books_table.sql`        | `bookstore.books` table                   |
+| `V3__create_book_authors_table.sql` | `bookstore.book_authors` join table       |
+| `V4__create_views.sql`              | `bookstore.book_listing` view             |
+| `V5__create_indexes.sql`            | Indexes on title, ISBN, author last name  |
 
 The migration history is stored in `bookstore.flyway_dev_history`.
-
-### Run both in one command
-
-```bash
-docker-compose up migrate-dev   # admin runs first via depends_on
-# or
-make migrate
-```
 
 ---
 
@@ -129,8 +119,6 @@ make migrate
 Open a psql shell:
 
 ```bash
-make psql
-# or
 docker-compose exec db psql -U postgres bookstore_db
 ```
 
@@ -155,22 +143,6 @@ SELECT * FROM bookstore.flyway_dev_history;
 
 ```bash
 docker-compose down -v   # removes containers AND the postgres volume
-# or
-make reset               # same, then restarts the db
+docker-compose up -d db  # restart the database
 ```
 
----
-
-## Make targets
-
-```
-make help          Show all available targets
-make start         Start the database container
-make stop          Stop all containers
-make migrate       Run admin then dev migrations
-make migrate-admin Run only the admin migrations
-make migrate-dev   Run only the dev migrations
-make reset         Destroy everything and restart the database
-make logs          Tail container logs
-make psql          Open a psql shell as postgres
-```
