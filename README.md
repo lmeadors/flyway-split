@@ -109,22 +109,28 @@ db/
 │       └── V3__grant_permissions.sql         # Grant schema privileges to roles
 └── bookstore/                                # Bookstore squad migrations
     └── sql/
-        ├── V1__create_authors_table.sql      # authors table
-        ├── V2__create_books_table.sql        # books table
-        ├── V3__create_book_authors_table.sql # join table
-        ├── V4__create_views.sql              # book_listing view
-        └── V5__create_indexes.sql            # performance indexes
+        ├── tables/                           # Versioned DDL — append-only
+        │   ├── V1__create_authors_table.sql  # authors table
+        │   ├── V2__create_books_table.sql    # books table
+        │   ├── V3__create_book_authors_table.sql # join table
+        │   └── V4__create_indexes.sql        # performance indexes
+        └── views/                            # Repeatable migrations — edit in place
+            └── R__book_listing.sql           # book_listing view
 ```
 
 Each migration set has its own Flyway configuration (passed via environment
 variables in `docker-compose.yml`):
 
-| Setting         | Admin                           | Bookstore                         |
-|-----------------|---------------------------------|-----------------------------------|
-| Connected user  | `postgres` (superuser)          | `app_user`                        |
-| Default schema  | `public`                        | `bookstore`                       |
-| History table   | `public.flyway_schema_history`  | `bookstore.flyway_schema_history` |
-| SQL location    | `db/admin/sql`                  | `db/bookstore/sql`                |
+| Setting         | Admin                           | Bookstore                                              |
+|-----------------|---------------------------------|--------------------------------------------------------|
+| Connected user  | `postgres` (superuser)          | `app_user`                                             |
+| Default schema  | `public`                        | `bookstore`                                            |
+| History table   | `public.flyway_schema_history`  | `bookstore.flyway_schema_history`                      |
+| SQL locations   | `db/admin/sql`                  | `db/bookstore/sql/tables`, `db/bookstore/sql/views`    |
+
+Versioned migrations (`V__`) in `tables/` are append-only and run once.
+Repeatable migrations (`R__`) in `views/` re-run whenever the file content changes,
+making it easy to update a view by editing it in place rather than adding a new versioned file.
 
 
 ## Prerequisites
@@ -171,15 +177,16 @@ The migration history is stored in `public.flyway_schema_history`.
 docker-compose run --rm migrate-bookstore
 ```
 
-Flyway connects as `app_user` (created in step 2) and applies:
+Flyway connects as `app_user` (created in step 2) and applies migrations from
+two locations — `tables/` first, then `views/`:
 
-| Migration                           | What it does                              |
-|-------------------------------------|-------------------------------------------|
-| `V1__create_authors_table.sql`      | `bookstore.authors` table                 |
-| `V2__create_books_table.sql`        | `bookstore.books` table                   |
-| `V3__create_book_authors_table.sql` | `bookstore.book_authors` join table       |
-| `V4__create_views.sql`              | `bookstore.book_listing` view             |
-| `V5__create_indexes.sql`            | Indexes on title, ISBN, author last name  |
+| Migration                               | Type        | What it does                              |
+|-----------------------------------------|-------------|-------------------------------------------|
+| `tables/V1__create_authors_table.sql`   | Versioned   | `bookstore.authors` table                 |
+| `tables/V2__create_books_table.sql`     | Versioned   | `bookstore.books` table                   |
+| `tables/V3__create_book_authors_table.sql` | Versioned | `bookstore.book_authors` join table      |
+| `tables/V4__create_indexes.sql`         | Versioned   | Indexes on title, ISBN, author last name  |
+| `views/R__book_listing.sql`             | Repeatable  | `bookstore.book_listing` view             |
 
 The migration history is stored in `bookstore.flyway_schema_history`.
 

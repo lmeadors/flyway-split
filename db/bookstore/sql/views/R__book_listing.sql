@@ -1,12 +1,14 @@
 -- =============================================================================
--- Bookstore migration: Create reporting views
+-- Bookstore repeatable migration: book_listing view
 --
 -- Owned by: Bookstore squad
 -- Run as:   app_user
+--
+-- Repeatable migrations (R__ prefix) re-run whenever this file changes.
+-- Edit this file in place to update the view — no new versioned migration needed.
 -- =============================================================================
 
--- A convenient view that joins books with their authors into a single row.
-CREATE VIEW bookstore.book_listing AS
+CREATE OR REPLACE VIEW bookstore.book_listing AS
     SELECT
         b.id,
         b.title,

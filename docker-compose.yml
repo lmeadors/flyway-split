@@ -56,7 +56,7 @@ services:
       FLYWAY_USER: app_user
       FLYWAY_PASSWORD: ${APP_USER_PASSWORD}
       FLYWAY_DEFAULT_SCHEMA: bookstore
-      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql/tables,filesystem:/flyway/sql/views
     depends_on:
       migrate-admin:
         condition: service_completed_successfully
