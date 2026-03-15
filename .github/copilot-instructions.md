@@ -1,4 +1,4 @@
-# Copilot Instructions — flyway-split
+# Copilot Instructions — bookstore
 
 ## Project purpose
 
@@ -17,6 +17,11 @@ framework — keep it simple and focused.
 The platform team provisions all credentials. `APP_USER_PASSWORD` is the
 **handoff credential**: the platform team sets it; the bookstore squad reads
 it to run their migrations. The bookstore squad never needs superuser access.
+
+In production these would be **two separate repositories** (`platform-db` and
+`bookstore-db`) to allow independent branching, tagging, and release cycles.
+This repo combines them for demo convenience — do not interpret the single-repo
+structure as a recommendation.
 
 ## Environments
 
@@ -37,7 +42,7 @@ All connection details **and** credentials are supplied via a `.env` file.
 | `DB_HOST`                 | Database hostname (`db` for local) |
 | `DB_PORT`                 | Database port (typically `5432`)   |
 | `DB_NAME`                 | Database name                      |
-| `POSTGRES_PASSWORD`       | Superuser password                 |
+| `DB_ADMIN_PASSWORD`       | Database admin password            |
 | `APP_USER_PASSWORD`       | Application user password          |
 | `REPORTING_USER_PASSWORD` | Reporting user password            |
 
@@ -48,8 +53,8 @@ All connection details **and** credentials are supplied via a `.env` file.
 ```
 
 Examples:
-- `/development/flyway-split/app-user-password`
-- `/production/flyway-split/postgres-password`
+- `/development/bookstore/app-user-password`
+- `/production/bookstore/postgres-password`
 
 Supported backends in `scripts/fetch-secrets.sh`: `local`, `ssm`,
 `secretsmanager`, `vault`.

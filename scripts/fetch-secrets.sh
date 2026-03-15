@@ -3,15 +3,15 @@
 # fetch-secrets.sh — Populate .env from a secrets backend
 #
 # Usage:
-#   SECRETS_BACKEND=local       ./scripts/fetch-secrets.sh   # no-op, use .env as-is
-#   SECRETS_BACKEND=ssm         ENV=staging  ./scripts/fetch-secrets.sh
-#   SECRETS_BACKEND=secretsmanager ENV=production ./scripts/fetch-secrets.sh
-#   SECRETS_BACKEND=vault       ENV=staging  ./scripts/fetch-secrets.sh
+#   SECRETS_BACKEND=local       APP=bookstore ./scripts/fetch-secrets.sh   # no-op, use .env as-is
+#   SECRETS_BACKEND=ssm         ENV=staging  APP=bookstore ./scripts/fetch-secrets.sh
+#   SECRETS_BACKEND=secretsmanager ENV=production APP=bookstore ./scripts/fetch-secrets.sh
+#   SECRETS_BACKEND=vault       ENV=staging  APP=bookstore ./scripts/fetch-secrets.sh
 #
 # Environment variables:
 #   SECRETS_BACKEND  local | ssm | secretsmanager | vault  (default: local)
 #   ENV              development | test | staging | production  (default: development)
-#   APP              application name used in secret paths  (default: flyway-split)
+#   APP              application name used in secret paths  (required — no default)
 #
 # Secret naming convention:  /{ENV}/{APP}/{secret-name}
 #
@@ -23,7 +23,7 @@ set -euo pipefail
 
 SECRETS_BACKEND="${SECRETS_BACKEND:-local}"
 ENV="${ENV:-development}"
-APP="${APP:-flyway-split}"
+APP="${APP:?ERROR: APP must be set (e.g. APP=bookstore)}"
 PREFIX="/${ENV}/${APP}"
 ENV_FILE="$(dirname "$0")/../.env"
 
@@ -54,7 +54,7 @@ ssm)
 DB_HOST=$(get_ssm db-host)
 DB_PORT=$(get_ssm db-port)
 DB_NAME=$(get_ssm db-name)
-POSTGRES_PASSWORD=$(get_ssm postgres-password)
+DB_ADMIN_PASSWORD=$(get_ssm db-admin-password)
 APP_USER_PASSWORD=$(get_ssm app-user-password)
 REPORTING_USER_PASSWORD=$(get_ssm reporting-user-password)
 EOF
@@ -73,7 +73,7 @@ secretsmanager)
 DB_HOST=$(get_key db-host)
 DB_PORT=$(get_key db-port)
 DB_NAME=$(get_key db-name)
-POSTGRES_PASSWORD=$(get_key postgres-password)
+DB_ADMIN_PASSWORD=$(get_key db-admin-password)
 APP_USER_PASSWORD=$(get_key app-user-password)
 REPORTING_USER_PASSWORD=$(get_key reporting-user-password)
 EOF
@@ -91,7 +91,7 @@ vault)
 DB_HOST=$(get_vault db-host)
 DB_PORT=$(get_vault db-port)
 DB_NAME=$(get_vault db-name)
-POSTGRES_PASSWORD=$(get_vault postgres-password)
+DB_ADMIN_PASSWORD=$(get_vault db-admin-password)
 APP_USER_PASSWORD=$(get_vault app-user-password)
 REPORTING_USER_PASSWORD=$(get_vault reporting-user-password)
 EOF

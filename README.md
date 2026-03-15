@@ -7,8 +7,7 @@ separate database concerns:
   - schema creation
   - role management
   - permission grants
-
-2. Database Development (run by a
+- Database Development (run by a
    developer with application-level credentials)
   - tables
   - views 
@@ -31,7 +30,26 @@ Splitting migrations by concern provides several benefits:
   review and merge dev migrations.
 - **Independent deployability** – either set of migrations can be deployed and
   rolled back without touching the other.
+- **Independent versioning** – each concern can be branched, tagged, and
+  released on its own schedule.
 
+
+## In production: two repos
+
+This demo collapses both concerns into one repository for convenience. In
+practice, each team would own a separate repository:
+
+| Repo                    | Owner           | Contains              |
+|-------------------------|-----------------|-----------------------|
+| `platform-db`           | Platform team   | `db/admin/` + `docker-compose.yml`, `scripts/`, `.env.example` |
+| `bookstore-db`          | Bookstore squad | `db/bookstore/` + its own `docker-compose.yml`, `scripts/`, `.env.example` |
+
+Separate repos mean separate branching strategies, release tags, and PR
+review gates — the platform team's release cycle does not block the bookstore
+squad's, and vice versa. The `APP_USER_PASSWORD` handoff credential is the
+only runtime coupling between them.
+
+---
 
 ## Project structure
 
@@ -58,7 +76,7 @@ variables in `docker-compose.yml`):
 |-----------------|------------------------------------|-----------------------------------------|
 | Connected user  | `postgres` (superuser)             | `app_user`                              |
 | Default schema  | `public`                           | `bookstore`                             |
-| History table   | `public.flyway_admin_history`      | `bookstore.flyway_bookstore_history`    |
+| History table   | `public.flyway_schema_history`      | `bookstore.flyway_schema_history`    |
 | SQL location    | `db/admin/sql`                     | `db/bookstore/sql`                      |
 
 
@@ -66,6 +84,10 @@ variables in `docker-compose.yml`):
 
 - [Docker](https://docs.docker.com/get-docker/) 
 - [Docker Compose](https://docs.docker.com/compose/install/)
+
+> This demo uses PostgreSQL, but the pattern applies to any database
+> [Flyway supports](https://documentation.red-gate.com/flyway/flyway-cli-and-api/supported-databases).
+> Swap the `db` service image and JDBC URL in `docker-compose.yml` for your target database.
 
 
 ## Running the demo
@@ -94,7 +116,7 @@ Flyway connects as `postgres` and applies:
 | `V2__create_roles.sql`      | Creates `app_user` and `reporting_user` roles |
 | `V3__grant_permissions.sql` | Grants appropriate privileges on the schema   |
 
-The migration history is stored in `public.flyway_admin_history`.
+The migration history is stored in `public.flyway_schema_history`.
 
 ### 3 – Run bookstore migrations (bookstore squad step)
 
@@ -112,7 +134,7 @@ Flyway connects as `app_user` (created in step 2) and applies:
 | `V4__create_views.sql`              | `bookstore.book_listing` view             |
 | `V5__create_indexes.sql`            | Indexes on title, ISBN, author last name  |
 
-The migration history is stored in `bookstore.flyway_bookstore_history`.
+The migration history is stored in `bookstore.flyway_schema_history`.
 
 ---
 
@@ -130,13 +152,13 @@ Then inspect the objects that were created:
 -- Admin objects
 \dn                                      -- list schemas
 \du                                      -- list roles
-SELECT * FROM public.flyway_admin_history;
+SELECT * FROM public.flyway_schema_history;
 
 -- Bookstore objects
 \dt bookstore.*                          -- list tables
 \dv bookstore.*                          -- list views
 \di bookstore.*                          -- list indexes
-SELECT * FROM bookstore.flyway_bookstore_history;
+SELECT * FROM bookstore.flyway_schema_history;
 ```
 
 ---
@@ -161,7 +183,7 @@ docker-compose reads automatically. The file is git-ignored. A committed
 | Variable                 | Owner          | Who needs it at runtime          |
 |--------------------------|----------------|----------------------------------|
 | `DB_HOST`, `DB_PORT`, `DB_NAME` | Platform team | Both teams                |
-| `POSTGRES_PASSWORD`      | Platform team  | Admin migrations only            |
+| `DB_ADMIN_PASSWORD`      | Platform team  | Admin migrations only            |
 | `REPORTING_USER_PASSWORD`| Platform team  | Admin migrations only            |
 | `APP_USER_PASSWORD`      | Platform team  | **Handoff credential** — bookstore squad reads this to run their migrations |
 
@@ -174,10 +196,10 @@ All secrets follow `/{env}/{app}/{secret-name}`:
 
 | Environment   | Type        | Example path                                      |
 |---------------|-------------|---------------------------------------------------|
-| `development` | ephemeral   | `/development/flyway-split/app-user-password`     |
-| `test`        | ephemeral   | `/test/flyway-split/app-user-password`            |
-| `staging`     | persistent  | `/staging/flyway-split/app-user-password`         |
-| `production`  | persistent  | `/production/flyway-split/app-user-password`      |
+| `development` | ephemeral   | `/development/bookstore/app-user-password`     |
+| `test`        | ephemeral   | `/test/bookstore/app-user-password`            |
+| `staging`     | persistent  | `/staging/bookstore/app-user-password`         |
+| `production`  | persistent  | `/production/bookstore/app-user-password`      |
 
 `development` and `test` environments are local or short-lived — developers
 run them on their own machines or in throwaway CI jobs. `staging` and
@@ -201,7 +223,7 @@ backend before running Flyway. The docker-compose interface is unchanged.
 
 ```bash
 # Fetch secrets, then migrate
-SECRETS_BACKEND=ssm ENV=staging APP=flyway-split ./scripts/fetch-secrets.sh
+SECRETS_BACKEND=ssm ENV=staging APP=bookstore ./scripts/fetch-secrets.sh
 docker-compose run --rm migrate-admin
 docker-compose run --rm migrate-bookstore
 ```
@@ -213,7 +235,7 @@ Example GitHub Actions step:
 
 ```yaml
 - name: Fetch secrets
-  run: SECRETS_BACKEND=ssm ENV=staging APP=flyway-split ./scripts/fetch-secrets.sh
+  run: SECRETS_BACKEND=ssm ENV=staging APP=bookstore ./scripts/fetch-secrets.sh
   env:
     AWS_REGION: us-east-1
     # AWS credentials supplied via OIDC role assumption
