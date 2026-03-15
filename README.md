@@ -3,12 +3,17 @@
 A demonstration of how to use [Flyway](https://flywaydb.org/) to manage two
 separate database concerns:
 
-1. **Database Administration** – schema creation, role management, permission
-   grants (run by a DBA with superuser credentials).
-2. **Database Development** – table, view, and index creation (run by a
-   developer with application-level credentials).
+- Database Administration (run by a DBA with superuser credentials)
+  - schema creation
+  - role management
+  - permission grants
 
----
+2. Database Development (run by a
+   developer with application-level credentials)
+  - tables
+  - views 
+  - indices
+
 
 ## Why split migrations?
 
@@ -27,44 +32,41 @@ Splitting migrations by concern provides several benefits:
 - **Independent deployability** – either set of migrations can be deployed and
   rolled back without touching the other.
 
----
 
 ## Project structure
 
 ```
 db/
-├── admin/                          # DBA-managed migrations
+├── admin/                                    # DBA-managed migrations
 │   └── sql/
-│       ├── V1__create_schema.sql           # Create the bookstore schema
-│       ├── V2__create_roles.sql            # Create app_user and reporting_user
-│       └── V3__grant_permissions.sql       # Grant schema privileges to roles
-└── dev/                            # Developer-managed migrations
+│       ├── V1__create_schema.sql             # Create the bookstore schema
+│       ├── V2__create_roles.sql              # Create app_user and reporting_user
+│       └── V3__grant_permissions.sql         # Grant schema privileges to roles
+└── bookstore/                                # Bookstore squad migrations
     └── sql/
-        ├── V1__create_authors_table.sql    # authors table
-        ├── V2__create_books_table.sql      # books table
+        ├── V1__create_authors_table.sql      # authors table
+        ├── V2__create_books_table.sql        # books table
         ├── V3__create_book_authors_table.sql # join table
-        ├── V4__create_views.sql            # book_listing view
-        └── V5__create_indexes.sql          # performance indexes
+        ├── V4__create_views.sql              # book_listing view
+        └── V5__create_indexes.sql            # performance indexes
 ```
 
 Each migration set has its own Flyway configuration (passed via environment
 variables in `docker-compose.yml`):
 
-| Setting         | Admin | Dev |
-|-----------------|-------------------------------|---------------------------------|
-| Connected user  | `postgres` (superuser)        | `app_user`                      |
-| Default schema  | `public`                      | `bookstore`                     |
-| History table   | `public.flyway_admin_history` | `bookstore.flyway_dev_history`  |
-| SQL location    | `db/admin/sql`                | `db/dev/sql`                    |
+| Setting         | Admin                              | Bookstore                                  |
+|-----------------|------------------------------------|-----------------------------------------|
+| Connected user  | `postgres` (superuser)             | `app_user`                              |
+| Default schema  | `public`                           | `bookstore`                             |
+| History table   | `public.flyway_admin_history`      | `bookstore.flyway_bookstore_history`    |
+| SQL location    | `db/admin/sql`                     | `db/bookstore/sql`                      |
 
----
 
 ## Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) and
-  [Docker Compose](https://docs.docker.com/compose/install/) – that's it.
+- [Docker](https://docs.docker.com/get-docker/) 
+- [Docker Compose](https://docs.docker.com/compose/install/)
 
----
 
 ## Running the demo
 
@@ -94,10 +96,10 @@ Flyway connects as `postgres` and applies:
 
 The migration history is stored in `public.flyway_admin_history`.
 
-### 3 – Run dev migrations (developer step)
+### 3 – Run bookstore migrations (bookstore squad step)
 
 ```bash
-docker-compose run --rm migrate-dev
+docker-compose run --rm migrate-bookstore
 ```
 
 Flyway connects as `app_user` (created in step 2) and applies:
@@ -110,7 +112,7 @@ Flyway connects as `app_user` (created in step 2) and applies:
 | `V4__create_views.sql`              | `bookstore.book_listing` view             |
 | `V5__create_indexes.sql`            | Indexes on title, ISBN, author last name  |
 
-The migration history is stored in `bookstore.flyway_dev_history`.
+The migration history is stored in `bookstore.flyway_bookstore_history`.
 
 ---
 
@@ -130,11 +132,11 @@ Then inspect the objects that were created:
 \du                                      -- list roles
 SELECT * FROM public.flyway_admin_history;
 
--- Dev objects
+-- Bookstore objects
 \dt bookstore.*                          -- list tables
 \dv bookstore.*                          -- list views
 \di bookstore.*                          -- list indexes
-SELECT * FROM bookstore.flyway_dev_history;
+SELECT * FROM bookstore.flyway_bookstore_history;
 ```
 
 ---
@@ -144,5 +146,81 @@ SELECT * FROM bookstore.flyway_dev_history;
 ```bash
 docker-compose down -v   # removes containers AND the postgres volume
 docker-compose up -d db  # restart the database
+```
+
+---
+
+## Credentials & Configuration
+
+All connection details and credentials are supplied via a `.env` file that
+docker-compose reads automatically. The file is git-ignored. A committed
+`.env.example` documents every required variable.
+
+### Two-team ownership
+
+| Variable                 | Owner          | Who needs it at runtime          |
+|--------------------------|----------------|----------------------------------|
+| `DB_HOST`, `DB_PORT`, `DB_NAME` | Platform team | Both teams                |
+| `POSTGRES_PASSWORD`      | Platform team  | Admin migrations only            |
+| `REPORTING_USER_PASSWORD`| Platform team  | Admin migrations only            |
+| `APP_USER_PASSWORD`      | Platform team  | **Handoff credential** — bookstore squad reads this to run their migrations |
+
+The IAM policy (or Vault policy) is the enforcement boundary: the bookstore
+squad's CI/CD role has read access only to their own secrets path.
+
+### Secret naming convention
+
+All secrets follow `/{env}/{app}/{secret-name}`:
+
+| Environment   | Type        | Example path                                      |
+|---------------|-------------|---------------------------------------------------|
+| `development` | ephemeral   | `/development/flyway-split/app-user-password`     |
+| `test`        | ephemeral   | `/test/flyway-split/app-user-password`            |
+| `staging`     | persistent  | `/staging/flyway-split/app-user-password`         |
+| `production`  | persistent  | `/production/flyway-split/app-user-password`      |
+
+`development` and `test` environments are local or short-lived — developers
+run them on their own machines or in throwaway CI jobs. `staging` and
+`production` are shared and persistent; their secrets live in the secrets
+manager and are never distributed as plain text.
+
+### Local development workflow
+
+```bash
+cp .env.example .env
+# Edit .env — set DB_HOST=db, DB_PORT=5432, DB_NAME=bookstore_db, and passwords
+docker-compose up -d db
+docker-compose run --rm migrate-admin
+docker-compose run --rm migrate-bookstore
+```
+
+### CI/CD workflow (staging / production)
+
+The `scripts/fetch-secrets.sh` script populates `.env` from your secrets
+backend before running Flyway. The docker-compose interface is unchanged.
+
+```bash
+# Fetch secrets, then migrate
+SECRETS_BACKEND=ssm ENV=staging APP=flyway-split ./scripts/fetch-secrets.sh
+docker-compose run --rm migrate-admin
+docker-compose run --rm migrate-bookstore
+```
+
+Supported backends: `local`, `ssm` (AWS SSM Parameter Store),
+`secretsmanager` (AWS Secrets Manager), `vault` (HashiCorp Vault).
+
+Example GitHub Actions step:
+
+```yaml
+- name: Fetch secrets
+  run: SECRETS_BACKEND=ssm ENV=staging APP=flyway-split ./scripts/fetch-secrets.sh
+  env:
+    AWS_REGION: us-east-1
+    # AWS credentials supplied via OIDC role assumption
+
+- name: Run migrations
+  run: |
+    docker-compose run --rm migrate-admin
+    docker-compose run --rm migrate-bookstore
 ```
 

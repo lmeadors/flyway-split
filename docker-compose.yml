@@ -6,9 +6,9 @@ services:
   db:
     image: postgres:15
     environment:
-      POSTGRES_DB: bookstore_db
+      POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     healthcheck:
@@ -29,37 +29,35 @@ services:
     volumes:
       - ./db/admin/sql:/flyway/sql:ro
     environment:
-      FLYWAY_URL: jdbc:postgresql://db:5432/bookstore_db
+      FLYWAY_URL: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
       FLYWAY_USER: postgres
-      FLYWAY_PASSWORD: postgres_password
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD}
       FLYWAY_DEFAULT_SCHEMA: public
       FLYWAY_TABLE: flyway_admin_history
       FLYWAY_LOCATIONS: filesystem:/flyway/sql
-      # Passwords for the roles created in V2__create_roles.sql.
-      # Change these values (or inject from CI/CD secrets) before deploying.
-      FLYWAY_PLACEHOLDERS_APP_USER_PASSWORD: app_password
-      FLYWAY_PLACEHOLDERS_REPORTING_USER_PASSWORD: reporting_password
+      FLYWAY_PLACEHOLDERS_APP_USER_PASSWORD: ${APP_USER_PASSWORD}
+      FLYWAY_PLACEHOLDERS_REPORTING_USER_PASSWORD: ${REPORTING_USER_PASSWORD}
     depends_on:
       db:
         condition: service_healthy
 
   # ---------------------------------------------------------------------------
-  # Dev migrations - run by a developer with application-level credentials.
+  # Bookstore migrations - run by the bookstore squad with app-level credentials.
   #
   # Responsibility: tables, views, indexes - all within the bookstore schema.
   # History is stored in the bookstore schema alongside the application objects.
   # ---------------------------------------------------------------------------
-  migrate-dev:
+  migrate-bookstore:
     image: flyway/flyway:10
     command: migrate
     volumes:
-      - ./db/dev/sql:/flyway/sql:ro
+      - ./db/bookstore/sql:/flyway/sql:ro
     environment:
-      FLYWAY_URL: jdbc:postgresql://db:5432/bookstore_db
+      FLYWAY_URL: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
       FLYWAY_USER: app_user
-      FLYWAY_PASSWORD: app_password
+      FLYWAY_PASSWORD: ${APP_USER_PASSWORD}
       FLYWAY_DEFAULT_SCHEMA: bookstore
-      FLYWAY_TABLE: flyway_dev_history
+      FLYWAY_TABLE: flyway_bookstore_history
       FLYWAY_LOCATIONS: filesystem:/flyway/sql
     depends_on:
       migrate-admin:
