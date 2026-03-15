@@ -5,7 +5,7 @@
 -- Run as:   postgres (superuser)
 --
 -- app_user        - The account used by the application at runtime and by
---                   developers running dev migrations.
+--                   the bookstore squad when running their migrations.
 -- reporting_user  - A read-only account used by reporting/analytics tools.
 --
 -- Passwords are injected via Flyway placeholders so they are never hardcoded

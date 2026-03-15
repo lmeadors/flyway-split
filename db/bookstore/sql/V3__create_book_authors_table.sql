@@ -1,7 +1,7 @@
 -- =============================================================================
--- Dev migration: Create the book_authors join table
+-- Bookstore migration: Create the book_authors join table
 --
--- Owned by: Developer
+-- Owned by: Bookstore squad
 -- Run as:   app_user
 -- =============================================================================
 

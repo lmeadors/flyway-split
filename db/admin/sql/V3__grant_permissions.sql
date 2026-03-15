@@ -5,8 +5,8 @@
 -- Run as:   postgres (superuser)
 --
 -- app_user       - full read/write access to the bookstore schema, plus the
---                  ability to create objects (needed to run dev migrations and
---                  to store the dev Flyway history table).
+--                  ability to create objects (needed to run bookstore migrations
+--                  and to store the Flyway history table).
 -- reporting_user - read-only access to the bookstore schema.
 -- =============================================================================
 

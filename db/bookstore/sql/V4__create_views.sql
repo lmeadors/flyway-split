@@ -1,7 +1,7 @@
 -- =============================================================================
--- Dev migration: Create reporting views
+-- Bookstore migration: Create reporting views
 --
--- Owned by: Developer
+-- Owned by: Bookstore squad
 -- Run as:   app_user
 -- =============================================================================
 

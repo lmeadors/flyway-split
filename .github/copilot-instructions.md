@@ -56,7 +56,7 @@ Examples:
 - `/development/bookstore/app-user-password`
 - `/production/bookstore/postgres-password`
 
-Supported backends in `scripts/fetch-secrets.sh`: `local`, `ssm`,
+Supported backends in `scripts/fetch-secrets-{backend}.sh`: `local`, `ssm`,
 `secretsmanager`, `vault`.
 
 ## Guiding principle

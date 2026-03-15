@@ -19,15 +19,15 @@ separate database concerns:
 | Concern                 | Who owns it | Credentials needed      |
 |-------------------------|-------------|-------------------------|
 | Schema, roles, grants   | DBA         | Superuser (`postgres`)  |
-| Tables, views, indexes  | Developer   | App user (`app_user`)   |
+| Tables, views, indexes  | Bookstore squad | App user (`app_user`)   |
 
 Splitting migrations by concern provides several benefits:
 
 - **Security** – developers never need superuser access.
 - **Auditing** – administrative changes (roles, credentials) are tracked in a
   separate history table from schema changes.
-- **Clear ownership** – DBAs review and merge admin migrations; developers
-  review and merge dev migrations.
+- **Clear ownership** – DBAs review and merge admin migrations; the bookstore
+  squad reviews and merges bookstore migrations.
 - **Independent deployability** – either set of migrations can be deployed and
   rolled back without touching the other.
 - **Independent versioning** – each concern can be branched, tagged, and
@@ -39,17 +39,64 @@ Splitting migrations by concern provides several benefits:
 This demo collapses both concerns into one repository for convenience. In
 practice, each team would own a separate repository:
 
-| Repo                    | Owner           | Contains              |
-|-------------------------|-----------------|-----------------------|
-| `platform-db`           | Platform team   | `db/admin/` + `docker-compose.yml`, `scripts/`, `.env.example` |
-| `bookstore-db`          | Bookstore squad | `db/bookstore/` + its own `docker-compose.yml`, `scripts/`, `.env.example` |
-
 Separate repos mean separate branching strategies, release tags, and PR
 review gates — the platform team's release cycle does not block the bookstore
 squad's, and vice versa. The `APP_USER_PASSWORD` handoff credential is the
 only runtime coupling between them.
 
----
+
+## Scaling the pattern: domains and bounded contexts
+
+This two-repo model scales naturally when organized around **domains** and
+**bounded contexts**.
+
+### The hierarchy
+
+| Level           | Repo            | Owner             | Contains                              |
+|-----------------|-----------------|-------------------|---------------------------------------|
+| Domain          | `platform-db`   | Platform/DBA team | Databases, roles, grants, extensions  |
+| Bounded context | `<context>-db`  | Context squad     | All schemas within that context       |
+
+A **domain** maps to a single database and a single `platform-db` repo. The
+platform team creates the database, provisions all roles, and manages anything
+that requires superuser access. One platform repo per domain keeps
+administrative ownership clear and avoids coordination overhead.
+
+A **bounded context** within that domain gets its own `<context>-db` repo and
+its own schema (or set of schemas). Multiple services within the same bounded
+context can share a single context repo, each owning a separate schema.
+
+### Coupling flows in one direction only
+
+```
+platform-db  →  (provisions credentials)  →  <context>-db
+```
+
+The context squad knows their `APP_USER_PASSWORD` was set by the platform
+team. They never need access to the platform repo. The platform team never
+needs to touch the context repos.
+
+### When to use a separate database (and a new platform repo)
+
+Use **one database per domain**; use **one schema per bounded context or
+service**. Add a second database — and therefore a second `platform-db` —
+only when contexts are unrelated enough that sharing a failure domain,
+extension set, or credential lifecycle would be a burden rather than a
+simplification.
+
+### Using this pattern in a scoped monorepo
+
+If multiple services live in the same monorepo, the pattern still applies as
+long as those services belong to the same bounded context. Each service gets
+its own subdirectory under `db/` and its own schema. The admin migrations
+directory (`db/admin/`) is the one shared resource — treat it with the same
+PR review discipline as a shared library.
+
+Cross-schema SQL joins are a warning sign: if two schemas frequently need to
+query each other directly, they may belong in the same schema. If they should
+stay separate, expose data via views or APIs rather than direct cross-schema
+references.
+
 
 ## Project structure
 
@@ -72,12 +119,12 @@ db/
 Each migration set has its own Flyway configuration (passed via environment
 variables in `docker-compose.yml`):
 
-| Setting         | Admin                              | Bookstore                                  |
-|-----------------|------------------------------------|-----------------------------------------|
-| Connected user  | `postgres` (superuser)             | `app_user`                              |
-| Default schema  | `public`                           | `bookstore`                             |
-| History table   | `public.flyway_schema_history`      | `bookstore.flyway_schema_history`    |
-| SQL location    | `db/admin/sql`                     | `db/bookstore/sql`                      |
+| Setting         | Admin                           | Bookstore                         |
+|-----------------|---------------------------------|-----------------------------------|
+| Connected user  | `postgres` (superuser)          | `app_user`                        |
+| Default schema  | `public`                        | `bookstore`                       |
+| History table   | `public.flyway_schema_history`  | `bookstore.flyway_schema_history` |
+| SQL location    | `db/admin/sql`                  | `db/bookstore/sql`                |
 
 
 ## Prerequisites
@@ -92,9 +139,9 @@ variables in `docker-compose.yml`):
 
 ## Running the demo
 
-> **Order matters.** Admin migrations must run before dev migrations because
-> dev migrations connect as `app_user`, which is created by the admin
-> migrations. Running dev migrations first will fail.
+> **Order matters.** Admin migrations must run before bookstore migrations
+> because bookstore migrations connect as `app_user`, which is created by the
+> admin migrations. Running bookstore migrations first will fail.
 
 ### 1 – Start the database
 
@@ -136,7 +183,6 @@ Flyway connects as `app_user` (created in step 2) and applies:
 
 The migration history is stored in `bookstore.flyway_schema_history`.
 
----
 
 ## Verifying the result
 
@@ -161,7 +207,6 @@ SELECT * FROM public.flyway_schema_history;
 SELECT * FROM bookstore.flyway_schema_history;
 ```
 
----
 
 ## Resetting the demo
 
@@ -180,31 +225,34 @@ docker-compose reads automatically. The file is git-ignored. A committed
 
 ### Two-team ownership
 
-| Variable                 | Owner          | Who needs it at runtime          |
-|--------------------------|----------------|----------------------------------|
-| `DB_HOST`, `DB_PORT`, `DB_NAME` | Platform team | Both teams                |
-| `DB_ADMIN_PASSWORD`      | Platform team  | Admin migrations only            |
-| `REPORTING_USER_PASSWORD`| Platform team  | Admin migrations only            |
-| `APP_USER_PASSWORD`      | Platform team  | **Handoff credential** — bookstore squad reads this to run their migrations |
+| Variable                        | Owner         | Who needs it at runtime |
+|---------------------------------|---------------|-------------------------|
+| `DB_HOST`, `DB_PORT`, `DB_NAME` | Platform team | Both teams              |
+| `DB_ADMIN_PASSWORD`             | Platform team | Admin migrations only   |
+| `REPORTING_USER_PASSWORD`       | Platform team | Admin migrations only   |
+| `APP_USER_PASSWORD`             | Platform team | Handoff credential      |
 
-The IAM policy (or Vault policy) is the enforcement boundary: the bookstore
-squad's CI/CD role has read access only to their own secrets path.
+The bookstore squad needs the `APP_USER_PASSWORD` value to run their migrations.
+
+The IAM policy (or Vault policy) is the enforcement boundary: 
+
+- The bookstore squad's CI/CD role has read access only to their own secrets path.
 
 ### Secret naming convention
 
 All secrets follow `/{env}/{app}/{secret-name}`:
 
-| Environment   | Type        | Example path                                      |
-|---------------|-------------|---------------------------------------------------|
-| `development` | ephemeral   | `/development/bookstore/app-user-password`     |
-| `test`        | ephemeral   | `/test/bookstore/app-user-password`            |
-| `staging`     | persistent  | `/staging/bookstore/app-user-password`         |
-| `production`  | persistent  | `/production/bookstore/app-user-password`      |
+| Environment   | Type        | Example path                                |
+|---------------|-------------|---------------------------------------------|
+| `development` | ephemeral   | `/development/bookstore/app-user-password`  |
+| `test`        | ephemeral   | `/test/bookstore/app-user-password`         |
+| `staging`     | persistent  | `/staging/bookstore/app-user-password`      |
+| `production`  | persistent  | `/production/bookstore/app-user-password`   |
 
-`development` and `test` environments are local or short-lived — developers
-run them on their own machines or in throwaway CI jobs. `staging` and
-`production` are shared and persistent; their secrets live in the secrets
-manager and are never distributed as plain text.
+- The `development` and `test` environments are local or short-lived.
+  — The developers run them on their own machines or in throwaway CI jobs. 
+- The `staging` and `production` are shared and persistent. 
+  - Their secrets live in the secrets manager and are never distributed as plain text.
 
 ### Local development workflow
 
@@ -218,24 +266,30 @@ docker-compose run --rm migrate-bookstore
 
 ### CI/CD workflow (staging / production)
 
-The `scripts/fetch-secrets.sh` script populates `.env` from your secrets
-backend before running Flyway. The docker-compose interface is unchanged.
+The `scripts/fetch-secrets-{backend}.sh` scripts populate `.env` from your
+secrets backend before running Flyway. The docker-compose interface is unchanged.
 
 ```bash
 # Fetch secrets, then migrate
-SECRETS_BACKEND=ssm ENV=staging APP=bookstore ./scripts/fetch-secrets.sh
+ENV=staging APP=bookstore ./scripts/fetch-secrets-ssm.sh
 docker-compose run --rm migrate-admin
 docker-compose run --rm migrate-bookstore
 ```
 
-Supported backends: `local`, `ssm` (AWS SSM Parameter Store),
-`secretsmanager` (AWS Secrets Manager), `vault` (HashiCorp Vault).
+Available scripts:
+
+| Script                                    | Backend                     |
+|-------------------------------------------|-----------------------------|
+| `scripts/fetch-secrets-local.sh`          | Local `.env` (verify only)  |
+| `scripts/fetch-secrets-ssm.sh`            | AWS SSM Parameter Store     |
+| `scripts/fetch-secrets-secretsmanager.sh` | AWS Secrets Manager         |
+| `scripts/fetch-secrets-vault.sh`          | HashiCorp Vault             |
 
 Example GitHub Actions step:
 
 ```yaml
 - name: Fetch secrets
-  run: SECRETS_BACKEND=ssm ENV=staging APP=bookstore ./scripts/fetch-secrets.sh
+  run: ENV=staging APP=bookstore ./scripts/fetch-secrets-ssm.sh
   env:
     AWS_REGION: us-east-1
     # AWS credentials supplied via OIDC role assumption

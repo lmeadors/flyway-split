@@ -1,7 +1,7 @@
 -- =============================================================================
--- Dev migration: Create the authors table
+-- Bookstore migration: Create the authors table
 --
--- Owned by: Developer
+-- Owned by: Bookstore squad
 -- Run as:   app_user
 -- =============================================================================
 

@@ -1,7 +1,7 @@
 -- =============================================================================
--- Dev migration: Create performance indexes
+-- Bookstore migration: Create performance indexes
 --
--- Owned by: Developer
+-- Owned by: Bookstore squad
 -- Run as:   app_user
 -- =============================================================================
 
