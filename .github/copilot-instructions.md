@@ -67,6 +67,43 @@ Supported backends in `scripts/fetch-secrets-{backend}.sh`: `local`, `ssm`,
 > and doing something that actually works for the people using it, choose
 > the approach that works. Pragmatic and useful beats pure and unusable.
 
+## Flyway migration conventions
+
+**Versioned migrations (`V__`)** — tables, indexes, constraints, data patches.
+- Append-only. Never edit a versioned file after it has been applied anywhere.
+- Version numbers must be globally unique across all `FLYWAY_LOCATIONS` for a
+  given runner. `tables/V4__foo.sql` and `views/V4__foo.sql` in the same runner will collide.
+- Names use double underscores: `V1__create_authors_table.sql`.
+- Each migration does one thing. Prefer many small migrations over one large one.
+
+**Repeatable migrations (`R__`)** — views, functions, stored procedures.
+- Named with a double underscore and no version: `R__book_listing.sql`.
+- Re-applied automatically whenever the file's checksum changes.
+- Always use `CREATE OR REPLACE` so re-application is idempotent.
+- Edit the file in place to update the object — no new `V__` file needed.
+
+**General rules**
+- Every migration file must be idempotent where possible (`IF NOT EXISTS`,
+  `CREATE OR REPLACE`, etc.).
+- Admin migrations run as `postgres`; bookstore migrations run as `app_user`.
+  Never cross those boundaries.
+- History tables are schema-scoped: admin history lives in `public`, bookstore
+  history lives in `bookstore`. Do not change `FLYWAY_DEFAULT_SCHEMA` without
+  considering where the history table will land.
+
+## SQL conventions
+
+- Schema-qualify every object reference: `bookstore.authors`, not just `authors`.
+  This prevents silent resolution against the wrong search path.
+- Use `SERIAL` or `BIGSERIAL` for surrogate primary keys on new tables.
+- Declare `NOT NULL` explicitly on every column that must have a value.
+- Define foreign keys with `ON DELETE CASCADE` or `ON DELETE RESTRICT` — never
+  leave referential action implicit.
+- `TIMESTAMP` columns default to `NOW()` for `created_at`/`updated_at`.
+- Index columns used in `WHERE`, `JOIN ON`, and `ORDER BY` clauses.
+- Do not use `SELECT *` in views — list columns explicitly so changes to the
+  underlying table don't silently change the view's output shape.
+
 ## What to avoid
 
 - Do not add new migration concerns without considering team ownership.
