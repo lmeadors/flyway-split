@@ -4,7 +4,7 @@ services:
   # The database - a plain PostgreSQL instance.
   # ---------------------------------------------------------------------------
   db:
-    image: postgres:15
+    image: postgres:17.9
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: postgres
@@ -24,7 +24,7 @@ services:
   # History is stored in the public schema so the superuser always has access.
   # ---------------------------------------------------------------------------
   migrate-admin:
-    image: flyway/flyway:10
+    image: flyway/flyway:12.1.0
     command: migrate
     volumes:
       - ./db/admin/sql:/flyway/sql:ro
@@ -47,7 +47,7 @@ services:
   # History is stored in the bookstore schema alongside the application objects.
   # ---------------------------------------------------------------------------
   migrate-bookstore:
-    image: flyway/flyway:10
+    image: flyway/flyway:12.1.0
     command: migrate
     volumes:
       - ./db/bookstore/sql:/flyway/sql:ro
